@@ -19,7 +19,10 @@ launches' SullyGnome hourly Twitch category averages):
   regime's log-spread is the per-hour residual standard deviation around
   that median.
 * Blend the two shapes by the size of hour 1: log10(p1) between 50k
-  (fully rolling) and 150k (fully mature). The split is empirical: in
+  (fully rolling) and 150k (fully mature). Each hour's fitted medians
+  and spreads are first averaged with their neighbours' (3-hour
+  smoothing), since ~15-20 games per regime make the raw per-hour
+  fits noisy while real launch-day shapes move smoothly. The split is empirical: in
   the kit's comparables, log10(hour-1 viewers) correlates -0.94 with
   log(peak / hour 1), and launches with hour 1 >= 100k almost always
   stay within ~2.7x of hour 1 while small-hour-1 launches grow many-fold.
@@ -41,9 +44,9 @@ launches' SullyGnome hourly Twitch category averages):
 Validation (leave-one-out over the kit's 37 usable comparables,
 scored with the contest's own log-scale pinball loss): on launches
 with hour 1 >= 100k viewers -- the only regime relevant to GTA VI --
-this forecaster scores mean 0.216 / median 0.184, against the house
+this forecaster scores mean 0.214 / median 0.184, against the house
 persistence baseline's 0.261 / 0.252. On all 37 comparables it scores
-mean 0.68 / median 0.31 against the baseline's 0.93 / 0.32.
+mean 0.68 / median 0.30 against the baseline's 0.93 / 0.32.
 
 The program reads every <id>.in in the input directory and writes
 <id>.out per case: {"hours": [{"hour": h, "q": [q05, q25, q50, q75,
@@ -226,7 +229,18 @@ def fit_shapes(case, target_name):
         shapes[h] = (m_med, r_med,
                      robust_spread(mature[h], m_med),
                      robust_spread(rolling[h], r_med))
-    return shapes
+    # Light temporal smoothing: with only ~15-20 games per regime the
+    # per-hour fits are noisy, while real launch-day shapes move
+    # smoothly hour to hour, so average each hour's fitted medians
+    # and spreads with its neighbours'. Leave-one-out over the kit's
+    # comparables improves slightly with it (see the module docstring).
+    smoothed = {}
+    for h in range(2, 25):
+        neigh = [hh for hh in (h - 1, h, h + 1) if 2 <= hh <= 24]
+        smoothed[h] = tuple(
+            sum(shapes[hh][k] for hh in neigh) / len(neigh)
+            for k in range(4))
+    return smoothed
 
 
 def baseline_quantiles(p1, hours, levels):
